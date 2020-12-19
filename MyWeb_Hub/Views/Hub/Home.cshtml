@@ -1,0 +1,941 @@
+﻿@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>CloundLL</title>
+
+    <!-- <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,600" rel="stylesheet"> -->
+    <link href="~/Content/family.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    @*<link href="~/Content/bootstrap.min.css" rel="stylesheet" type="text/css"/>*@
+    <link rel="stylesheet" href="~/Content/reset.min.css">
+    <script src="~/Scripts/jquery-3.4.1.min.js"></script>
+    <script src="~/Scripts/jquery.signalR-2.4.1.js"></script>
+    <link rel="stylesheet" href="~/Content/style.css">
+    <link rel="stylesheet" href="~/Content/login.css">
+    <script src="/signalr/hubs"></script>
+    <script type="text/javascript">
+        $(function () {
+
+            //一. 初始化信息
+            //默认路径
+            //1. 与服务器路径进行匹配
+            var conn = $.connection.hub;
+            //2. 与生成的代理类建立连接
+            var proxy = $.connection.mySpecHub1;
+            var myConnectionId;
+            var Uname = "请输入";
+            var uName = "空";
+            var chatType;
+            var dataId;
+            var groupName = "room1";
+            //3.当服务器端指定路径的时候，需要有下面的代码进行匹配（仅使用手动代理）
+            //conn.url = "/myhub1";
+            var friends;
+
+            function ss() {
+                var friends = {
+                    list: document.querySelector('ul.people'),
+                    all: document.querySelectorAll('.left .person'),
+                    name: ''
+                },
+                    chat = {
+                        container: document.querySelector('.container .right'),
+                        current: null,
+                        person: null,
+                        name: document.querySelector('.container .right .top .name')
+                    };
+
+
+                friends.all.forEach(function (f) {
+                    f.addEventListener('mousedown', function () {
+                        f.classList.contains('active') || setAciveChat(f);
+                    });
+                });
+                function setAciveChat(f) {
+                    friends.list.querySelector('.active').classList.remove('active');
+                    f.classList.add('active');
+                    chat.current = chat.container.querySelector('.active-chat');
+                    chat.person = f.getAttribute('data-chat');
+                    chat.current.classList.remove('active-chat');
+                    chat.container.querySelector('[data-chat="' + chat.person + '"]').classList.add('active-chat');
+                    friends.name = f.querySelector('.name').innerText;
+                    chatType = f.querySelector('.time').innerText;
+                    uName = friends.name;
+                    dataId = chat.person; //选中id
+
+                    chat.name.innerHTML = friends.name;
+                    if (chatType == "群") {
+                        getRoomData();
+                        proxy.server.EnterRoom(uName);
+                        roll();
+                        //proxy.server.GetRoomData(uName);
+                    } else if (chatType == "好友") {
+                        getFriendsData();
+                        roll();
+                    }
+                }
+            }
+            conn.start().done(function () {
+                $("#j_notice").html("连接成功");
+            }).fail(function () {
+                console.log('Could not connect');
+            });
+
+
+            //二. 定义客户端的方法
+            //1 接受用户登录成功后的提示
+            proxy.client.LoginSuccessNotice = function (data, connectionId) {
+                speckText(data);
+                $("#j_Msg").append("<li class=nav_li>" + data + "</li>");
+
+            };
+            //2 接收点对点用户发送来的消息
+            var jsons1;
+            proxy.client.receiveMsg = function (data) {
+                speckText(data);
+                ss();
+               
+                //alert(dataId);
+               // $("#"+dataId).append("<div class='conversation-start'>" + data + " </div>");
+                //$("#" + dataId).append("<li class=nav_msg><div class='bubble you'>" + data + " </div></li>");
+                $("#j_Msg").append("<li class=nav_li>" + data + "</li>");
+                /////////这边得改用json
+                //////
+                console.log(data);
+                jsons1 = JSON.parse(data);
+                var str = jsons1[0].uName;
+                  $("#" + escapeJquery(str)).append("<li class=nav_msg><div class='bubble you'>" + jsons1[0].msg + " </div></li>");
+                roll();
+
+            }
+              proxy.client.receiveroomMsg = function (data) {
+                speckText(data);
+                  ss();
+                 
+                //alert(dataId);
+                //$("#"+dataId).append("<div class='conversation-start'>" + data + " </div>");
+                  jsons1 = JSON.parse(data);
+                  console.log(jsons1);
+                  var str = jsons1[0].uName;
+                  $("#" + escapeJquery(str)).append("<li class=nav_msg><div class='conversation-start'><span>" + jsons1[0].sendName + "</span></div></li>");
+                //$("#j_Msg").append("<li class=nav_li>" + data + "</li>");
+                  roll();
+            }
+            
+            //3. 接收自己的connectionId
+            proxy.client.ReceiveOwnCid = function (connectionId) {
+                //把用户ConnectionID存起来
+                $("#j_connectionId").val(connectionId);
+                myConnectionId = connectionId;
+                //alert(myConnectionId);
+            }
+
+
+            //三. 主动事件
+            //1.建立连接
+            $("#j_connect").click(function () {
+                conn.start().done(function () {
+                    $("#j_notice").html("连接成功");
+                }).fail(function () {
+                    console.log('Could not connect');
+                });
+            });
+            //2.断开连接
+            $("#j_close").click(function () {
+                conn.stop();
+            });
+            //3.点对点发送消息
+            $("#j_send111").click(function () {
+                var state = conn.state;
+                if (state == 1) {
+                    //调用服务器端方法
+                    proxy.server.sendSingleMsg(myConnectionId, $("#j_content").val());
+                } else if (state == 0) {
+                    $("#j_notice").html("正在连接中，请稍等");
+                } else if (state == 2) {
+                    $("#j_notice").html("正在重连，请稍等");
+                } else if (state == 4) {
+                    $("#j_notice").html("掉线了，请重新连接");
+                }
+
+            });
+            //4.群发消息
+            $("#j_sendAll").click(function () {
+                var state = conn.state;
+                if (state == 1) {
+                    //调用服务器端方法
+                    proxy.server.SendAllMsg($("#j_content").val());
+                } else if (state == 0) {
+                    $("#j_notice").html("正在连接中，请稍等");
+                } else if (state == 2) {
+                    $("#j_notice").html("正在重连，请稍等");
+                } else if (state == 4) {
+                    $("#j_notice").html("掉线了，请重新连接");
+                }
+
+            });
+            //5.进入room1
+            //$("#j_room1").click(function () {
+            //    //调用服务器端方法
+            //    proxy.server.EnterRoom("room1");
+            //});
+            //6.进入room2
+            $("#j_room2").click(function () {
+                //调用服务器端方法
+                proxy.server.EnterRoom("room2");
+            });
+            //7. 发送消息
+            $("#j_send").click(function () {
+                if (Uname == "请输入") {
+                    alert("请登录");
+                } else {
+                    if (chatType == "群") {
+                        $("#" + escapeJquery(uName) + "").append("<li class=nav_msg><p class=nickname-right><span class=nicktime>"+datetimeNow()+" &nbsp&nbsp</span>  "+Uname+"</p><div class='bubble me'>" + $('#j_content2').val() + " </div></li>");
+                        proxy.server.SendRoomNameMsg(uName, $('#j_content2').val());
+                        roll();
+                    } else if (chatType == "好友") {
+                        var str = uName;
+                  
+                        $("#" + escapeJquery(str)).append("<li class=nav_msg><p class=nickname-right><span class=nicktime>"+datetimeNow()+"&nbsp&nbsp</span>  "+Uname+"</p><div class='bubble me'>" + $('#j_content2').val() + " </div></li>");
+                        proxy.server.sendConnIdMsg(uName, $("#j_content2").val());
+                        roll();
+                    }
+
+                }
+
+            });
+            //8. 给room2中的用户发送消息
+            $("#j_sendRoom2").click(function () {
+                proxy.server.SendRoomNameMsg("room2", $('#j_content2').val());
+            });
+
+            //9. 调用控制器中的方法发送信息
+            $("#j_btn").click(function () {
+                var myConnectionId = $("#j_connectionId").val();
+                var msg = $('#j_content3').val();
+                console.log(myConnectionId);
+                $.post("/Hub/MySendAll", { myConnectionId: myConnectionId, msg: msg }, function (data) {
+                    if (data == "ok") {
+                        alert("发送成功");
+                    }
+                });
+
+            });
+
+
+            //四. 监控事件
+            //1. 连接断开的方法
+            conn.disconnected(function () {
+                $("#j_notice").html("连接中断");
+            });
+
+            //更新私聊列表
+            var count = 2;
+            proxy.client.receiveList = function (data) {
+                //$(".people").append("<li class=person data-chat=person5>");
+                //$(".people").append("<img src=  />");
+                //$(".people").append("<span class=name>" + data + "</span>");
+                //$(".people").append("<span class=time>dd</span>");
+                //$(".people").append("<span class=preview>dd</span>");
+                //$(".people").append("</li>");
+                $(".people").append("<li class=person data-chat=person" + count + ">  <img src=../../img/dog.png />  <span class=name>" + data + " </span><span class=time>好友</span>  </li>");
+              //  $(".chatData").append("<div class=chat data-chat=person" + count + " id=person" + count + "><div class=conversation-start> <span>Today, 6:48 AM</span></div></div>");
+                $(".chatData").append(" <div class=chat data-chat=person" + count + ">     <ul class=nav_data id=" + data + " >  <li class=nav_msg><div class=conversation-start><span>Today, 6:48 AM</span></div>  </li>  </ul> </div>");
+
+                ss();
+                count++;
+            }
+            //更新群聊列表
+            var dataMsgId;
+            proxy.client.receiveRoomList = function (data) {
+                //$(".people").append("<li class=person data-chat=person5>");
+                //$(".people").append("<img src=  />");
+                //$(".people").append("<span class=name>" + data + "</span>");
+                //$(".people").append("<span class=time>dd</span>");
+                //$(".people").append("<span class=preview>dd</span>");
+                //$(".people").append("</li>");
+                dataMsgId = "person" + count;
+                $(".people").append("<li class=person data-chat=person" + count + ">  <img src=../../img/dog.png />  <span class=name>" + data + "</span><span  class=time>群</span>  </li>");
+                //$(".chatData").append("<div class=chat data-chat=person" + count + " id=person" + count + "><div class=conversation-start> <span>Today, 6:48 AM</span></div></div>");
+                $(".chatData").append(" <div class=chat data-chat=person" + count + ">     <ul class=nav_data id=" + data + " >  <li class=nav_msg><div class=conversation-start><span>Today, 6:48 AM</span></div>  </li>  </ul> </div>");
+                
+                ss();
+                count++;
+            }
+
+            $("#j_list").click(function () {
+                var state = conn.state;
+                if (state == 1) {
+                    //调用服务器端方法
+                    proxy.server.getChatList("565");
+                } else if (state == 0) {
+                    $("#j_notice").html("正在连接中，请稍等");
+                } else if (state == 2) {
+                    $("#j_notice").html("正在重连，请稍等");
+                } else if (state == 4) {
+                    $("#j_notice").html("掉线了，请重新连接");
+                }
+            })
+            //获取聊天列表   ok
+            function getList(str) {
+                var state = conn.state;
+                if (state == 1) {
+                    //调用服务器端方法
+                    proxy.server.getChatList(str);
+                } else if (state == 0) {
+                    $("#j_notice").html("正在连接中，请稍等");
+                } else if (state == 2) {
+                    $("#j_notice").html("正在重连，请稍等");
+                } else if (state == 4) {
+                    $("#j_notice").html("掉线了，请重新连接");
+                }
+            }
+
+            //获取聊天信息  还没弄好
+            function getChatList(i, str) {
+                var state = conn.state;
+                if (state == 1) {
+                    //调用服务器端方法
+                    proxy.server.getChatList(str);
+                } else if (state == 0) {
+                    $("#j_notice").html("正在连接中，请稍等");
+                } else if (state == 2) {
+                    $("#j_notice").html("正在重连，请稍等");
+                } else if (state == 4) {
+                    $("#j_notice").html("掉线了，请重新连接");
+                }
+            }
+
+            //语音播报  先关闭
+            function speckText(str) {
+                ////var request=  new URLRequest();
+                //var url = "http://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&text=" + encodeURI(str);        // baidu
+                ////url = "http://translate.google.cn/translate_tts?ie=UTF-8&tl=zh-CN&total=1&idx=0&textlen=19&prev=input&q=" + encodeURI(str); // google
+
+                ////request.url = encodeURI(url);
+                //// request.contentType = "audio/mp3"; // for baidu
+                ////request.contentType = "audio/mpeg"; // for google
+                //var n = new Audio(url);
+                //n.src = url;
+                //n.play();
+                //// $("...").play();
+                //// var sound = new Sound(request);
+                //// sound.play();
+            }
+
+            //10.调用控制器中的方法来登录
+            $("#j_login").click(function () {
+                //var myConnectionId = $("#j_connectionId").val();
+                //alert($("#j_connectionId").val());
+                var UserName = $('#UserName').val();
+                //alert(UserName);
+                var PassWord = $('#PassWord').val();
+                //alert(PassWord);
+                console.log(myConnectionId);
+                $.post("/Hub/MyLogin", { myConnectionId: myConnectionId, UserName: UserName, PassWord: PassWord }, function (data) {
+                    if (data == "ok") {
+                        alert("登录成功");                        
+                        Uname = UserName;
+                        
+                        $("#writeLogin").css('display', 'none' );
+                        var show1 = $('#write').css('display');
+                        $("#write").css('display', 'block' );
+                        $("#j_uName").html(UserName);
+                        getList(UserName);
+                        var bg = document.querySelector(".bg");
+                        bg.classList.remove("active");
+                    } else {
+                        alert("账号或密码错误");
+                    }
+                });
+            });
+            proxy.client.dataMsg = function (data) {
+                $("#" + escapeJquery(dataId)).append("<li class=nav_msg><div class='bubble you'>" + data + " </div></li>");
+            }
+
+            //11. 添加好友
+            $("#j_add").click(function () {
+                var state = conn.state;
+                if (state == 1) {
+                    //调用服务器端方法                    
+                    var r=confirm("真的要添加" + $('#friendsId').val() + "为好友吗");
+                    if (r==true){
+                         proxy.server.addFriends($('#friendsId').val());
+                    }                  
+                } else if (state == 0) {
+                    $("#j_notice").html("正在连接中，请稍等");
+                } else if (state == 2) {
+                    $("#j_notice").html("正在重连，请稍等");
+                } else if (state == 4) {
+                    $("#j_notice").html("掉线了，请重新连接");
+                }
+            });
+            // 加入或创建房间;
+             $("#j_addroom").click(function () {
+                var state = conn.state;
+                if (state == 1) {
+                    //调用服务器端方法                    
+                    var r=confirm("真的要创建或进入群组" + $('#roomName_1').val() + "");
+                    if (r==true){
+                         proxy.server.addGroupChat($('#roomName_1').val());
+                    }                  
+                } else if (state == 0) {
+                    $("#j_notice").html("正在连接中，请稍等");
+                } else if (state == 2) {
+                    $("#j_notice").html("正在重连，请稍等");
+                } else if (state == 4) {
+                    $("#j_notice").html("掉线了，请重新连接");
+                }
+            });
+
+            //////////////************************//////////////////
+            proxy.client.aaa = function (data) {
+                if (data == "ok") {
+                    $(".people").append("<li class=person data-chat=person" + count + ">  <img src=../../img/dog.png />  <span class=name>" + $('#friendsId').val() + "</span>    <span class=time>好友</span>  </li>");
+                    //$(".chatData").append("<div class=chat data-chat=person" + count + " id=person" + count + "><div class=conversation-start> <span>Today, 6:48 AM</span></div></div>");
+                    $(".chatData").append(" <div class=chat data-chat=person" + count + "> <ul class=nav_data id=" + $('#friendsId').val()+ " >  <li class=nav_msg><div class=conversation-start><span>Today, 6:48 AM</span></div>  </li>  </ul> </div>");
+
+                    ss();
+                    count++;
+                }
+                $("#j_Msg").append("<li class=nav_li>" + data + "</li>");
+
+            }
+            proxy.client.bbb = function (data) {
+                alert(data);
+            }
+
+            proxy.client.roomadd = function (data) {
+                if (data == "ok") {
+                    $(".people").append("<li class=person data-chat=person" + count + ">  <img src=../../img/dog.png />  <span class=name>" + $('#roomName_1').val() + "</span>    <span class=time>群</span>  </li>");
+                    //$(".chatData").append("<div class=chat data-chat=person" + count + " id=person" + count + "><div class=conversation-start> <span>Today, 6:48 AM</span></div></div>");
+                    $(".chatData").append(" <div class=chat data-chat=person" + count + "> <ul class=nav_data id=" + $('#roomName_1').val()+ " >  <li class=nav_msg><div class=conversation-start><span>"+datetimeNow()+"/span></div>  </li>  </ul> </div>");
+                    ss();
+                    count++;
+                }
+                $("#j_Msg").append("<li class=nav_li>" + data + "</li>");
+
+            }
+
+
+            var jsons = "";
+            $("#j_aaa").click(function () {
+                // var state = conn.state;
+                //if (state == 1) {
+                //    //调用服务器端方法
+                //      proxy.server.GetRoomData(uName);
+
+                //} else if (state == 0) {
+                //    $("#j_notice").html("正在连接中，请稍等");
+                //} else if (state == 2) {
+                //    $("#j_notice").html("正在重连，请稍等");
+                //} else if (state == 4) {
+                //    $("#j_notice").html("掉线了，请重新连接");
+                //}
+                //getRoomData();//聊天信息
+                //document.querySelector(".nav_data").scrollTop += 1000;//越大速度越快，加入定时函数就是你要的效果
+                //document.querySelector(".nav_data").scrollTop = document.querySelector(".nav_data").scrollHeight;
+                roll();
+            });
+            function roll() {
+                var high = document.querySelector("[id='"+escapeJquery(uName)+"']" ).scrollHeight;
+                var a = document.querySelector("[id='"+escapeJquery(uName)+"']" ).scrollTop;
+                for (var i = 0; i < high; i = i + 5) {
+                    setTimeout(function () { document.querySelector("[id='"+escapeJquery(uName)+"']" ).scrollTop += 5; }, 100);
+                }
+            }
+            //获取聊天数据
+            function getRoomData() {
+                $.post("/Hub/GetRoomChatData", { roomName: uName }, function (data) {
+                    $("#" + uName).empty();
+                    jsons = JSON.parse(data);//转化
+                    console.log(jsons);
+                    
+                    for (var i = jsons.length - 1; i >= 0; i--) {
+                        //alert(jsons[i].sendName + "--------- " + jsons[i].msg);
+                        if (jsons[i].sendName == Uname) {
+                            $("#" + escapeJquery(jsons[i].roomName)).append("<li class=nav_msg><p class=nickname-right><span class=nicktime>"+timeToHHmm(jsons[i].time)+" &nbsp&nbsp</span> "+jsons[i].sendName+"</p><div class='bubble me'>" + jsons[i].msg + " </div></li>");
+                        } else {
+                            $("#" + escapeJquery(jsons[i].roomName)).append("<li class=nav_msg><p class=nickname-left>"+jsons[i].sendName+"<span class=nicktime>&nbsp&nbsp "+timeToHHmm(jsons[i].time)+"</span> </p><div class='bubble you'> " + jsons[i].msg + " </div></li>");
+                        }
+                    }
+                    document.querySelector(".nav_data").scrollTop = document.querySelector(".nav_data").scrollHeight;
+                    //alert(data);
+                });
+            }
+
+            function getFriendsData() {
+                $.post("/Hub/GetFriendsChatData", {  Sender: Uname ,Receiver: uName }, function (data) {
+                    $("#" + escapeJquery(uName)).empty();
+                    jsons = JSON.parse(data);//转化
+                    console.log(jsons)
+                    for (var i = jsons.length - 1; i >= 0; i--) {
+                        //alert(jsons[i].sendName + "--------- " + jsons[i].msg);
+                        console.log(escapeJquery(uName));
+                        if (jsons[i].Sender == Uname) {
+                            $("[id='"+escapeJquery(uName)+"']").append("<li class=nav_msg><p class=nickname-right><span class=nicktime>"+timeToHHmm(jsons[i].Time)+" &nbsp&nbsp</span>  "+jsons[i].Sender+"</p><div class='bubble me'>" + jsons[i].Msg + " </div></li>");
+                        } else {
+                            $("[id='"+escapeJquery(uName)+"']").append("<li class=nav_msg><p class=nickname-left>"+jsons[i].Receiver+"<span class=nicktime>&nbsp&nbsp"+timeToHHmm(jsons[i].Time)+"</span> </p><div class='bubble you'>" + jsons[i].Msg + " </div></li>");
+                        }
+                    }
+                    document.querySelector(".nav_data").scrollTop = document.querySelector(".nav_data").scrollHeight;
+                    //alert(data);
+                });
+            }
+            //////*************************///////////////
+
+            //转义字符的处理
+            function escapeJquery(srcString) {
+                // 转义之后的结果
+                 var escapseResult = srcString;
+
+                 // javascript正则表达式中的特殊字符
+                 var jsSpecialChars = ["\\", "^", "$", "*", "?", ".", "+", "(", ")", "[","]", "|", "{", "}"];
+
+                 // jquery中的特殊字符,不是正则表达式中的特殊字符
+                 var jquerySpecialChars = ["~", "`", "@@", "#", "%", "&", "=", "'", "\"", ":", ";", "<", ">", ",", "/"];
+
+                 for (var i = 0; i < jsSpecialChars.length; i++) {
+                   escapseResult = escapseResult.replace(new RegExp("\\" + jsSpecialChars[i], "g"), "\\" + jsSpecialChars[i]);
+                 }
+
+                 for (var i = 0; i < jquerySpecialChars.length; i++) {
+                   escapseResult = escapseResult.replace(new RegExp(jquerySpecialChars[i], "g"), "\\" + jquerySpecialChars[i]);
+                 }
+
+            return escapseResult;
+            };
+            //搜索框
+            const suggestions = document.querySelector('.type-ahead__suggestions')
+            const input = document.querySelector('.type-ahead__input');
+            suggestions.addEventListener('click', (e) => {
+            if (e.target.classList.contains('match')) {
+                input.value = e.target.parentNode.innerText;
+            } else {
+                input.value = e.target.innerText;
+            }
+                suggestions.classList.add('hidden');
+            })
+            input.addEventListener('keyup', (e) => {
+            if (e.code === 'Enter') return suggestions.classList.add('hidden');
+                const text = event.target.value;
+                var str = `<li class="suggestion"><span class="match">${text}</span></li>`;
+                if (!text) {
+                     return suggestions.classList.add('hidden')
+                }
+                else
+                {
+                    suggestions.classList.remove('hidden')
+                    $.post("/Hub/GetQueryFriends", {  name: text}, function (data) {                    
+                        jsons = JSON.parse(data);//转化
+                        console.log(jsons);
+                        for (var i = 0; i < jsons.length; i++) {
+                            str += `<li class="suggestion">${highLightMatch(jsons[i].name, text)}</li>`;
+                            
+                        } 
+                        console.log(str);
+                        const suggestionItems = str;
+                        suggestions.innerHTML = suggestionItems;
+                    });                    
+                };
+            });
+            function highLightMatch(sentence, targetText) {
+	            const regex = new RegExp(targetText, 'gi');
+	            return sentence.replace(regex, `<span class="match">${targetText}</span>`)
+}
+        });        
+
+        function datetimeNow() {
+
+           var myDate = new Date;
+            //var year = myDate.getFullYear(); //获取当前年
+            //var mon = myDate.getMonth() + 1; //获取当前月
+            //var date = myDate.getDate(); //获取当前日
+           var h = myDate.getHours();//获取当前小时数(0-23)
+           var m = myDate.getMinutes();//获取当前分钟数(0-59)
+         // var s = myDate.getSeconds();//获取当前秒
+           var week = myDate.getDay();
+           var weeks = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+           //console.log(year, mon, date, weeks[week])
+            var str = h + ":" + m;
+            return str;
+        }
+        function timeToHHmm(str) {
+            var str1 = str.substring(11, 16);
+            return str1;
+        }
+    </script>
+    <style>
+        /* 谷歌、苹果浏览器 */
+    ::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* IE浏览器 */
+    ::-ms-scrollbar {
+        display: none;
+    }
+
+    /* 火狐浏览器 */
+    ::-moz-scrollbar {
+        display: none;
+    }
+
+    /* 欧朋浏览器 */
+    ::-o-scrollbar {
+        display: none;
+    }
+        .container {
+  
+         width: 100%;
+        height: 95%;
+
+        }
+       
+        .people {
+            height: 84%;
+            width: 374px;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .person {
+            height:66px;
+            width: 374px;
+        }
+        .nav_data {
+            height: 100%;
+            width: 100%;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .nav_msg {
+            height:50px;
+            width: 100%;
+        }
+        .container .left .people .person .name {
+            font-size:26px;
+        }
+
+        /* 搜索框 */
+.type-ahead {
+    width: 100%;
+    max-width: 250px;
+    position: relative;
+    -webkit-perspective: 500px;
+    perspective: 500px;
+    z-index: 100000;
+}
+
+.type-ahead__input {
+    padding: 12px 34px 12px 12px;
+    border: none;
+    border-radius: 0;
+    font-size: 14px;
+    letter-spacing: .4px;
+    caret-color: #007991;
+    color: #007991;
+    outline: none;
+    width: calc(100% - 46px);
+    box-shadow: 4px 8px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+    .type-ahead__input::-webkit-input-placeholder {
+        opacity: .5;
+        -webkit-transition: opacity .2s linear;
+        transition: opacity .2s linear;
+        color: #6E6E6E;
+    }
+
+    .type-ahead__input::-moz-placeholder {
+        opacity: .5;
+        -moz-transition: opacity .2s linear;
+        transition: opacity .2s linear;
+        color: #6E6E6E;
+    }
+
+    .type-ahead__input:-ms-input-placeholder {
+        opacity: .5;
+        -ms-transition: opacity .2s linear;
+        transition: opacity .2s linear;
+        color: #6E6E6E;
+    }
+
+    .type-ahead__input::-ms-input-placeholder {
+        opacity: .5;
+        -ms-transition: opacity .2s linear;
+        transition: opacity .2s linear;
+        color: #6E6E6E;
+    }
+
+    .type-ahead__input::placeholder {
+        opacity: .5;
+        -webkit-transition: opacity .2s linear;
+        transition: opacity .2s linear;
+        color: #6E6E6E;
+    }
+
+    .type-ahead__input:focus::-webkit-input-placeholder {
+        opacity: .7;
+    }
+
+    .type-ahead__input:focus::-moz-placeholder {
+        opacity: .7;
+    }
+
+    .type-ahead__input:focus:-ms-input-placeholder {
+        opacity: .7;
+    }
+
+    .type-ahead__input:focus::-ms-input-placeholder {
+        opacity: .7;
+    }
+
+    .type-ahead__input:focus::placeholder {
+        opacity: .7;
+    }
+
+.type-ahead .icon {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    fill: #6E6E6E;
+    -webkit-transform: scale(0.8);
+    transform: scale(0.8);
+    fill: #007991;
+}
+
+.type-ahead__suggestions {
+    padding: 4px 0;
+    background-color: #fff;
+    width: 100%;
+    position: absolute;
+    top: 42px;
+    margin: 0;
+    -webkit-transform-origin: top;
+    transform-origin: top;
+    -webkit-transform: rotateX(0deg);
+    transform: rotateX(0deg);
+    -webkit-transition: opacity 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.3s, -webkit-transform 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.2s;
+    transition: opacity 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.3s, -webkit-transform 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.2s;
+    transition: transform 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.2s, opacity 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.3s;
+    transition: transform 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.2s, opacity 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.3s, -webkit-transform 0.6s cubic-bezier(0.68, -0.55, 0.39, 1.3) -0.2s;
+}
+
+    .type-ahead__suggestions.hidden {
+        opacity: 0;
+        -webkit-transform: rotateX(-90deg);
+        transform: rotateX(-90deg);
+        transform: rotateX(-90deg);
+        pointer-events: none;
+        -webkit-transition: opacity 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09) 0.1s, -webkit-transform 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09);
+        transition: opacity 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09) 0.1s, -webkit-transform 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09);
+        transition: transform 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09), opacity 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09) 0.1s;
+        transition: transform 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09), opacity 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09) 0.1s, -webkit-transform 0.6s cubic-bezier(0.71, -0.22, 0.33, 1.09);
+    }
+
+    .type-ahead__suggestions .suggestion {
+        color: #6E6E6E;
+        list-style: none;
+        font-size: 28px;
+        margin: 0;
+        padding: 8px 12px;
+        -webkit-transition: all .2s linear;
+        transition: all .2s linear;
+        cursor: pointer;
+    }
+
+        .type-ahead__suggestions .suggestion .match {
+            font-weight: bold;
+            overflow-wrap: break-word;
+        }
+
+        .type-ahead__suggestions .suggestion:hover {
+            color: #007991;
+        }
+        .login-btn {
+            
+            top: 10px;
+            left: 2px;
+            color: black;
+            width: 50px;
+            height: 50px;
+            background-color: white;
+        }
+        .chatInput{
+            height: 70px;
+    background-color: rgba(255, 255, 255, 0.5);
+    display: flex;
+    align-items: center;
+    padding: 0px 20px;
+    border-bottom-right-radius: 10px;
+    position: relative;
+        }
+        .chatInput p{
+                color: #333;
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+                font-size: 14px;
+                flex: 1;
+                text-align: center;
+                letter-spacing: 1px;
+        }
+        .chatInput span{
+            color: blue;
+            cursor: pointer;
+             font-size: 16px;
+        }
+        .nickname-left{
+            color: #333;
+            font-size: 13px;
+            user-select: text;
+            margin-right: 4px;
+            float:left;
+            clear:both;
+        }
+        .nickname-right{
+            color: #333;
+            font-size: 13px;
+            user-select: text;
+            margin-right: 4px;
+            float:right;
+            clear:both;
+        }
+        .nicktime{
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body style="background-image:url(../../img/pkq.jpg)">
+    @*<iframe src="http://127.0.0.1:5500/cat/index.html"  width="100%" height="100%" style="z-index:-1;width:100%;position:fixed"></iframe>*@
+    <div><span>提示：</span><span id="j_notice"></span></div>
+    <button id="j_list">获取list</button>
+    <button id="j_aaa">获取</button>
+    <input type="text" name="name" value="" id="roomName_1" placeholder="请输入房间名" />
+    <button id="j_addroom">添加房间号</button>
+    <div class="wrapper">
+        <div class="container">
+        
+            <div class="left"  >
+                
+                
+                <div class="top">
+                    <div class="type-ahead">
+                        <input type="text" class="type-ahead__input" id="friendsId" placeholder="请输入..." style="width: 228px;">
+                        @*<svg class="icon" width="24" height="24" xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd"
+                     clip-rule="evenodd">
+                    <path d="M15.853 16.56c-1.683 1.517-3.911 2.44-6.353 2.44-5.243 0-9.5-4.257-9.5-9.5s4.257-9.5 9.5-9.5 9.5 4.257 9.5 9.5c0 2.442-.923 4.67-2.44 6.353l7.44 7.44-.707.707-7.44-7.44zm-6.353-15.56c4.691 0 8.5 3.809 8.5 8.5s-3.809 8.5-8.5 8.5-8.5-3.809-8.5-8.5 3.809-8.5 8.5-8.5z" />
+                </svg>*@
+                        <ul class="type-ahead__suggestions hidden"> </ul>
+                    </div>
+                    <a class="search" id="j_add"></a>
+                </div>
+                <ul class="people">
+                    <li class="person" data-chat="person1">
+                        <img src="../../img/thomas.jpg" alt="" />
+                        <span class="name">room1</span>
+                        <span class="time">群</span>
+                    </li>
+                </ul>
+
+            </div>
+            <div class="right">
+                <div class="top"><span>To: <span class="name"></span></span></div>
+                <div class="chatData" style="height:100%">
+                    <div class="chat" data-chat="person1">
+                        <ul class="nav_data" id="room1">
+                            <li class="nav_msg">
+                                <div class="conversation-start">
+                                    <span>系统消息</span>
+                                </div>
+                            </li>
+                            <li class="nav_msg">
+                                <div class="bubble you">
+                                    <span>系统消息</span>
+                                </div>
+                            </li>
+                            <li class="nav_msg">
+                                <div class="conversation-start">
+                                    <span>系统消息</span>
+                                </div>
+                            </li>
+                            <li class="nav_msg">
+                                <p class="nickname-left">你好 <span class="nicktime">time</span></p>
+                                <div class="bubble you">
+                                    <span>系统消息</span>
+                                </div>
+                            </li>
+                        </ul>
+
+                    </div>
+                </div>
+                <div class="write" style="display:none" id="write">
+                    <a href="javascript:;" class="write-link attach"></a>
+                    <input type="text" id="j_content2" style="width: 470px;" />
+
+                    <a href="javascript:;" class="write-link smiley"></a>
+                    <a href="javascript:;" class="write-link send" id="j_send"></a>
+                </div>
+                <div class="write" id="writeLogin">   
+                    <div class="chatInput">
+                        <p>游客朋友你好，请先<span class="login-btn">登录</span>后在进行聊天</p>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+        <div class="nav_wrap">
+            <ul id="j_Msg" class="nav_ul"></ul>
+        </div>
+        @*<div style="position: relative; height: 10px;">
+            <button class="login-btn">登录/注册</button>
+        </div>*@
+        @*登录界面*@
+        <div class="bg">
+            <div class="login-card">
+                <div class="rotate">
+                    <div class="card-front">
+                        <h4>登录</h4>
+                        <div class="img_nav"><i class="top_nav"></i></div>
+                        <div class="form-group"><img class="input-icon" src="../../img/login.png"><input type="text" class="form-style" id="UserName" placeholder="请输入用户名"></div>
+                        <div class="form-group"><img class="input-icon" src="../../img/pass.png"><input class="form-style" type="password" id="PassWord" placeholder="请输入密码"></div>
+                        <div class="form-group"><button class="input-btn" id="j_login" value="">登录</button></div>
+                        <div class="form-group form-left">
+                            <span>没有账号?</span>
+                            <span class="btn" id="btn2">立即注册</span>
+                        </div>
+
+                    </div>
+                    <div class="card-back">
+                        <form method="post" action="/Hub/RegisterUser">
+                            <h4>注册</h4>
+                            <div class="img_nav"><i class="top_nav"></i></div>
+                            <div class="form-group"><img class="input-icon" src="../../img/login.png"><input name="UserName" type="text" class="form-style" placeholder="请输入用户名"></div>
+                            <div class="form-group"><img class="input-icon" src="../../img/pass.png"><input name="PassWord" type="password" class="form-style" placeholder="请输入密码"></div>
+                            <div class="form-group"><input type="submit" class="input-btn" value="注册"></div>
+                            <div class="form-group">
+                                <span>已有账号?</span>
+                                <span class="btn" id="btn">立即登录</span>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="~/Scripts/index.js"></script>
+</body>
+
+</html>
